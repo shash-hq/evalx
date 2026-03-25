@@ -1,13 +1,15 @@
-import 'dotenv/config'; // Must be the absolute first line
+
+import 'dotenv/config';
 import { createServer } from 'http';
 import { Server } from 'socket.io';
 import app from './src/app.js';
 import { connectDB } from './src/config/db.js';
 import { initSocket } from './src/config/socket.js';
-import './src/config/redis.js';
 import { verifyMailTransport } from './src/services/mail.service.js';
+import './src/workers/submission.worker.js'; // ← registers Bull processor
 
-const PORT = process.env.PORT || 5000;
+const PORT = process.env.PORT || 8000;
+
 const httpServer = createServer(app);
 
 const io = new Server(httpServer, {
@@ -19,11 +21,8 @@ const io = new Server(httpServer, {
 });
 
 initSocket(io);
-
-// Make io accessible in controllers
 app.set('io', io);
 
-// Single block to connect DB, verify email, and start server
 connectDB().then(() => {
   verifyMailTransport();
   httpServer.listen(PORT, () => {
