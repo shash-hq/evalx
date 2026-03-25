@@ -1,0 +1,222 @@
+import slugify from 'slugify';
+import Contest from '../models/Contest.js';
+import Registration from '../models/Registration.js';
+import { ApiError } from '../utils/ApiError.js';
+import { ApiResponse } from '../utils/ApiResponse.js';
+import { asyncHandler } from '../utils/asyncHandler.js';
+
+
+const generateSlug = async (title) => {
+  let slug = slugify(title, { lower: true, strict: true });
+  let count = 0;
+  while (await Contest.findOne({ slug: count ? `${slug}-${count}` : slug })) count++;
+  return count ? `${slug}-${count}` : slug;
+};
+
+// GET /api/contests
+export const getContests = asyncHandler(async (req, res) => {
+  const { status, page = 1, limit = 10, search } = req.query;
+  const query = { isApprovedByAdmin: true };
+
+  if (status) query.status = status;
+  if (search) query.title = { $regex: search, $options: 'i' };
+
+  const skip = (Number(page) - 1) * Number(limit);
+
+  const [contests, total] = await Promise.all([
+    Contest.find(query)
+      .populate('organizerId', 'name')
+      .sort({ startTime: 1 })
+      .skip(skip)
+      .limit(Number(limit))
+      .lean(),
+    Contest.countDocuments(query),
+  ]);
+
+  res.json(new ApiResponse(200, {
+    contests,
+    pagination: { total, page: Number(page), pages: Math.ceil(total / limit) },
+  }));
+});
+
+// GET /api/contests/:slug
+export const getContestBySlug = asyncHandler(async (req, res) => {
+  const contest = await Contest.findOne({ slug: req.params.slug })
+    .populate('organizerId', 'name email')
+    .lean();
+
+  if (!contest) throw new ApiError(404, 'Contest not found');
+
+  // Strip test cases from problems — never expose to client via this route
+  const sanitized = { ...contest };
+  delete sanitized.problems; // problems fetched via separate protected route
+
+  res.json(new ApiResponse(200, sanitized));
+});
+
+// POST /api/contests
+export const createContest = asyncHandler(async (req, res) => {
+  const {
+    title, description, startTime, endTime,
+    entryFee, prizePool, prizeDistribution,
+    maxParticipants, tags,
+  } = req.body;
+
+  if (!title || !startTime || !endTime || entryFee == null || prizePool == null) {
+    throw new ApiError(400, 'title, startTime, endTime, entryFee, prizePool are required');
+  }
+
+  if (new Date(startTime) >= new Date(endTime)) {
+    throw new ApiError(400, 'endTime must be after startTime');
+  }
+
+  if (new Date(startTime) <= new Date()) {
+    throw new ApiError(400, 'startTime must be in the future');
+  }
+
+  const slug = await generateSlug(title);
+
+  const contest = await Contest.create({
+    title, slug, description, organizerId: req.user._id,
+    startTime, endTime, entryFee, prizePool,
+    prizeDistribution: prizeDistribution || [],
+    maxParticipants: maxParticipants || 500,
+    tags: tags || [],
+  });
+
+  res.status(201).json(new ApiResponse(201, contest, 'Contest created'));
+});
+
+// PUT /api/contests/:id
+export const updateContest = asyncHandler(async (req, res) => {
+  const contest = await Contest.findById(req.params.id);
+  if (!contest) throw new ApiError(404, 'Contest not found');
+
+  const isOwner = contest.organizerId.toString() === req.user._id.toString();
+  const isAdmin = req.user.role === 'admin';
+  if (!isOwner && !isAdmin) throw new ApiError(403, 'Not authorized');
+
+  if (contest.status !== 'draft') {
+    throw new ApiError(400, 'Only draft contests can be edited');
+  }
+
+  const forbidden = ['slug', 'organizerId', 'participants', 'registeredCount', 'status'];
+  forbidden.forEach((f) => delete req.body[f]);
+
+  Object.assign(contest, req.body);
+  await contest.save();
+
+  res.json(new ApiResponse(200, contest, 'Contest updated'));
+});
+
+// DELETE /api/contests/:id
+export const deleteContest = asyncHandler(async (req, res) => {
+  const contest = await Contest.findById(req.params.id);
+  if (!contest) throw new ApiError(404, 'Contest not found');
+
+  const isOwner = contest.organizerId.toString() === req.user._id.toString();
+  if (!isOwner && req.user.role !== 'admin') throw new ApiError(403, 'Not authorized');
+  if (contest.status !== 'draft') throw new ApiError(400, 'Only draft contests can be deleted');
+
+  await contest.deleteOne();
+  res.json(new ApiResponse(200, null, 'Contest deleted'));
+});
+
+// GET /api/contests/:id/problems  (registered users only, contest must be live/judging/closed)
+export const getContestProblems = asyncHandler(async (req, res) => {
+  const contest = await Contest.findById(req.params.id)
+    .populate({
+      path: 'problems',
+      select: '-testCases', // never expose hidden test cases
+    });
+
+  if (!contest) throw new ApiError(404, 'Contest not found');
+
+  const allowedStatuses = ['live', 'judging', 'closed'];
+  if (!allowedStatuses.includes(contest.status)) {
+    throw new ApiError(403, 'Problems are only accessible during or after the contest');
+  }
+
+  const registration = await Registration.findOne({
+    userId: req.user._id,
+    contestId: contest._id,
+    status: 'confirmed',
+  });
+
+  if (!registration && req.user.role !== 'admin') {
+    throw new ApiError(403, 'You are not registered for this contest');
+  }
+
+  res.json(new ApiResponse(200, contest.problems));
+});
+
+// GET /api/contests/:id/leaderboard
+export const getLeaderboard = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+
+  const leaderboard = await buildLeaderboard(id);
+  res.json(new ApiResponse(200, leaderboard));
+});
+
+// GET /api/contests/:id/my-submissions
+export const getMySubmissions = asyncHandler(async (req, res) => {
+  const Submission = (await import('../models/Submission.js')).default;
+
+  const submissions = await Submission.find({
+    contestId: req.params.id,
+    userId: req.user._id,
+  })
+    .populate('problemId', 'title slug points')
+    .sort({ submittedAt: -1 })
+    .lean();
+
+  res.json(new ApiResponse(200, submissions));
+});
+
+// ── Internal helper ──
+export const buildLeaderboard = async (contestId) => {
+  const Submission = (await import('../models/Submission.js')).default;
+
+  const results = await Submission.aggregate([
+    { $match: { contestId: new (await import('mongoose')).default.Types.ObjectId(contestId), status: 'accepted' } },
+    { $sort: { submittedAt: 1 } },
+    {
+      $group: {
+        _id: { userId: '$userId', problemId: '$problemId' },
+        score: { $first: '$score' },
+        submittedAt: { $first: '$submittedAt' },
+      },
+    },
+    {
+      $group: {
+        _id: '$_id.userId',
+        totalScore: { $sum: '$score' },
+        lastSubmission: { $max: '$submittedAt' },
+        solvedCount: { $sum: 1 },
+      },
+    },
+    { $sort: { totalScore: -1, lastSubmission: 1 } },
+    {
+      $lookup: {
+        from: 'users',
+        localField: '_id',
+        foreignField: '_id',
+        as: 'user',
+      },
+    },
+    { $unwind: '$user' },
+    {
+      $project: {
+        _id: 0,
+        userId: '$_id',
+        name: '$user.name',
+        totalScore: 1,
+        solvedCount: 1,
+        lastSubmission: 1,
+      },
+    },
+  ]);
+
+  return results.map((entry, index) => ({ rank: index + 1, ...entry }));
+};
+

@@ -1,0 +1,17 @@
+# Dependencies
+**/node_modules/
+
+# Environment variables (Critical)
+**/.env
+**/.env.*
+!**/.env.example
+
+# Build outputs
+**/dist/
+**/build/
+
+# OS generated files
+**/.DS_Store
+
+# Logs
+**/*.log
