@@ -1,10 +1,8 @@
 import nodemailer from 'nodemailer';
 
+// --- THE UPDATED TRANSPORTER ---
 const transporter = nodemailer.createTransport({
-  host: 'smtp.gmail.com',
-  port: 587,
-  secure: false,
-  family: 4, // ← Force IPv4. This is the fix.
+  service: 'gmail', // ← This tells Nodemailer to handle the Google network routing internally
   auth: {
     user: process.env.SMTP_USER,
     pass: process.env.SMTP_PASS,
@@ -13,6 +11,7 @@ const transporter = nodemailer.createTransport({
     rejectUnauthorized: false, // dev only
   },
 });
+// -------------------------------
 
 export const sendOTPEmail = async (to, otp) => {
   try {
@@ -33,7 +32,7 @@ export const sendOTPEmail = async (to, otp) => {
     console.log(`OTP sent successfully to ${to}`);
   } catch (error) {
     console.error('Email sending failed:', error.message);
-    throw error; // Controller tak error bhejna zaroori hai
+    throw error; 
   }
 };
 
