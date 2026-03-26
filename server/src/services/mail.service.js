@@ -1,17 +1,13 @@
 import nodemailer from 'nodemailer';
 
-// --- THE UPDATED TRANSPORTER ---
 const transporter = nodemailer.createTransport({
-  service: 'gmail', // ← This tells Nodemailer to handle the Google network routing internally
+  service: 'gmail',
+  secure: true,         // port 465, SSL — Railway allows this
   auth: {
     user: process.env.SMTP_USER,
     pass: process.env.SMTP_PASS,
   },
-  tls: {
-    rejectUnauthorized: false, // dev only
-  },
 });
-// -------------------------------
 
 export const sendOTPEmail = async (to, otp) => {
   try {
@@ -29,10 +25,10 @@ export const sendOTPEmail = async (to, otp) => {
         </div>
       `,
     });
-    console.log(`OTP sent successfully to ${to}`);
+    console.log(`OTP sent to ${to}`);
   } catch (error) {
     console.error('Email sending failed:', error.message);
-    throw error; 
+    throw error;
   }
 };
 
