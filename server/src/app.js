@@ -42,7 +42,7 @@ const corsOptions = {
 app.use(cors(corsOptions));
 
 // Handle preflight for all routes explicitly
-app.options('*', cors(corsOptions));
+app.options('(.*)', cors(corsOptions));
 
 app.use(helmet());
 app.use(morgan('dev'));
