@@ -18,7 +18,6 @@ app.set('trust proxy', 1);
 
 const allowedOrigin = process.env.CLIENT_URL;
 
-// Log on startup so Railway logs confirm the value
 console.log('CORS origin set to:', allowedOrigin);
 
 if (!allowedOrigin) {
@@ -27,7 +26,6 @@ if (!allowedOrigin) {
 
 const corsOptions = {
   origin: (origin, callback) => {
-    // Allow requests with no origin (curl, Postman, server-to-server)
     if (!origin) return callback(null, true);
     if (origin === allowedOrigin) return callback(null, true);
     console.warn(`CORS blocked request from origin: ${origin}`);
@@ -38,10 +36,7 @@ const corsOptions = {
   allowedHeaders: ['Content-Type', 'Authorization'],
 };
 
-// Apply CORS before everything — including error handler
 app.use(cors(corsOptions));
-
-// Handle preflight for all routes explicitly
 app.options('(.*)', cors(corsOptions));
 
 app.use(helmet());

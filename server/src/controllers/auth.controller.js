@@ -30,11 +30,11 @@ export const register = asyncHandler(async (req, res) => {
   if (existing && existing.isEmailVerified) throw new ApiError(409, 'Email already registered');
 
   const otp = generateOTP();
-  const otpExpiry = new Date(Date.now() + 10 * 60 * 1000); // 10 min
+  const otpExpiry = new Date(Date.now() + 10 * 60 * 1000);
 
   if (existing && !existing.isEmailVerified) {
     existing.name = name;
-    existing.passwordHash = password; // triggers pre-save hash
+    existing.passwordHash = password;
     existing.otp = otp;
     existing.otpExpiry = otpExpiry;
     existing.otpAttempts = 0;
@@ -43,7 +43,11 @@ export const register = asyncHandler(async (req, res) => {
     await User.create({ name, email, passwordHash: password, otp, otpExpiry });
   }
 
-  await sendOTPEmail(email, otp);
+  try {
+    await sendOTPEmail(email, otp);
+  } catch (emailErr) {
+    console.error('OTP email failed (non-fatal):', emailErr.message);
+  }
 
   res.status(201).json(new ApiResponse(201, { email }, 'OTP sent to your email'));
 });
@@ -145,7 +149,11 @@ export const resendOTP = asyncHandler(async (req, res) => {
   user.otpAttempts = 0;
   await user.save();
 
-  await sendOTPEmail(email, otp);
+  try {
+    await sendOTPEmail(email, otp);
+  } catch (emailErr) {
+    console.error('OTP email failed (non-fatal):', emailErr.message);
+  }
 
   res.status(200).json(new ApiResponse(200, null, 'New OTP sent'));
 });
@@ -154,6 +162,3 @@ export const resendOTP = asyncHandler(async (req, res) => {
 export const getMe = asyncHandler(async (req, res) => {
   res.status(200).json(new ApiResponse(200, req.user.toSafeObject()));
 });
-
-
-
