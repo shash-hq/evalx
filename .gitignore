@@ -15,3 +15,8 @@
 
 # Logs
 **/*.log
+.env
+*.env
+dump.rdb
+.vercel/
+.DS_Store
