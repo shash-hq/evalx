@@ -1,11 +1,20 @@
-import { Resend } from 'resend';
+import nodemailer from 'nodemailer';
 
-const resend = new Resend(process.env.RESEND_API_KEY);
+// Transporter setup using your Gmail SMTP credentials
+const transporter = nodemailer.createTransport({
+  host: process.env.SMTP_HOST || 'smtp.gmail.com',
+  port: process.env.SMTP_PORT || 587,
+  secure: false, // true for 465, false for 587
+  auth: {
+    user: process.env.SMTP_USER,
+    pass: process.env.SMTP_PASS,
+  },
+});
 
 export const sendOTPEmail = async (to, otp) => {
   try {
-    await resend.emails.send({
-      from: 'EvalX <onboarding@resend.dev>', // use this until you add a custom domain
+    await transporter.sendMail({
+      from: `"EvalX" <${process.env.MAIL_FROM || process.env.SMTP_USER}>`,
       to,
       subject: 'Your EvalX Verification Code',
       html: `
@@ -18,7 +27,7 @@ export const sendOTPEmail = async (to, otp) => {
         </div>
       `,
     });
-    console.log(`OTP sent to ${to}`);
+    console.log(`OTP sent successfully to ${to}`);
   } catch (error) {
     console.error('Email sending failed:', error.message);
     throw error;
@@ -26,11 +35,11 @@ export const sendOTPEmail = async (to, otp) => {
 };
 
 export const verifyMailTransport = async () => {
-  // Resend doesn't need a persistent connection verify
-  // Just confirm the key exists
-  if (!process.env.RESEND_API_KEY) {
-    console.error('RESEND_API_KEY is not set');
-  } else {
-    console.log('Resend email service ready');
+  try {
+    // Nodemailer actually pings the SMTP server to verify credentials
+    await transporter.verify();
+    console.log('Nodemailer email service ready (Gmail SMTP)');
+  } catch (error) {
+    console.error('SMTP Connection Error. Check your App Password:', error.message);
   }
 };
