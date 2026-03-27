@@ -1,18 +1,11 @@
-import nodemailer from 'nodemailer';
+import { Resend } from 'resend';
 
-const transporter = nodemailer.createTransport({
-  service: 'gmail',
-  secure: true,         // port 465, SSL — Railway allows this
-  auth: {
-    user: process.env.SMTP_USER,
-    pass: process.env.SMTP_PASS,
-  },
-});
+const resend = new Resend(process.env.RESEND_API_KEY);
 
 export const sendOTPEmail = async (to, otp) => {
   try {
-    await transporter.sendMail({
-      from: `"EvalX" <${process.env.MAIL_FROM}>`,
+    await resend.emails.send({
+      from: 'EvalX <onboarding@resend.dev>', // use this until you add a custom domain
       to,
       subject: 'Your EvalX Verification Code',
       html: `
@@ -33,10 +26,11 @@ export const sendOTPEmail = async (to, otp) => {
 };
 
 export const verifyMailTransport = async () => {
-  try {
-    await transporter.verify();
-    console.log('SMTP transport ready');
-  } catch (err) {
-    console.error('SMTP connection failed:', err.message);
+  // Resend doesn't need a persistent connection verify
+  // Just confirm the key exists
+  if (!process.env.RESEND_API_KEY) {
+    console.error('RESEND_API_KEY is not set');
+  } else {
+    console.log('Resend email service ready');
   }
 };
