@@ -7,7 +7,6 @@ import { connectDB } from './src/config/db.js';
 import { initSocket } from './src/config/socket.js';
 import { verifyMailTransport } from './src/services/mail.service.js';
 import './src/workers/submission.worker.js'; // ← registers Bull processor
-import './src/workers/submission.worker.js';
 import './src/workers/contest.worker.js'; // ← add this
 
 const PORT = process.env.PORT || 8000;
