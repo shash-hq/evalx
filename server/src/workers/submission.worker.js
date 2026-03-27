@@ -1,7 +1,7 @@
 import submissionQueue from '../queues/submission.queue.js';
 import Submission from '../models/Submission.js';
 import Problem from '../models/Problem.js';
-import { runTestCase } from '../services/judge.service.js';
+import { judgeSubmission } from '../services/judge.service.js';
 import { getIO } from '../config/socket.js';
 import { buildLeaderboard } from '../controllers/contest.controller.js';
 
@@ -18,45 +18,40 @@ submissionQueue.process(async (job) => {
   submission.status = 'processing';
   await submission.save();
 
-  const testResults = [];
+  let testResults = [];
   let finalStatus = 'accepted';
   let totalScore = 0;
+  let executionTime = 0;
+  let memoryUsed = 0;
 
-  for (let i = 0; i < problem.testCases.length; i++) {
-    const tc = problem.testCases[i];
-    let result;
+  try {
+    const judgeResult = await judgeSubmission({
+      language: submission.language,
+      sourceCode: submission.code,
+      testCases: problem.testCases,
+      timeLimitMs: problem.timeLimit,
+      memoryLimitMb: problem.memoryLimit,
+    });
 
-    try {
-      result = await runTestCase({
-        language: submission.language,
-        code: submission.code,
-        input: tc.input,
-        expectedOutput: tc.output,
-      });
-    } catch (err) {
-      result = {
-        passed: false,
-        status: 'runtime_error',
-        stderr: err.message,
-        stdout: '',
-        time: 0,
-        memory: 0,
-      };
-    }
-
-    testResults.push({
-      testCaseIndex: i,
+    finalStatus = judgeResult.status;
+    executionTime = judgeResult.executionTime;
+    memoryUsed = judgeResult.memoryUsed;
+    testResults = judgeResult.testResults.map((result) => ({
+      testCaseIndex: result.testCaseIndex,
       passed: result.passed,
       time: result.time,
       memory: result.memory,
       stderr: result.stderr,
-    });
-
-    // Short-circuit on first failure
-    if (!result.passed) {
-      finalStatus = result.status;
-      break;
-    }
+    }));
+  } catch (err) {
+    finalStatus = 'runtime_error';
+    testResults = [{
+      testCaseIndex: 0,
+      passed: false,
+      time: 0,
+      memory: 0,
+      stderr: err.message,
+    }];
   }
 
   if (finalStatus === 'accepted') {
@@ -79,6 +74,8 @@ submissionQueue.process(async (job) => {
   submission.status = finalStatus;
   submission.testResults = testResults;
   submission.score = totalScore;
+  submission.executionTime = executionTime;
+  submission.memoryUsed = memoryUsed;
   submission.processedAt = new Date();
   await submission.save();
 
