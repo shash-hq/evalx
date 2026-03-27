@@ -4,7 +4,8 @@ import nodemailer from 'nodemailer';
 const transporter = nodemailer.createTransport({
   host: 'smtp.gmail.com',
   port: 465,
-  secure: true, // Force SSL on port 465 to bypass Railway firewalls
+  secure: true, 
+  family: 4, // <-- THE MAGIC WAND: Forces IPv4, totally bypassing the IPv6 crash
   auth: {
     user: process.env.SMTP_USER,
     pass: process.env.SMTP_PASS,
