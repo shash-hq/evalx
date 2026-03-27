@@ -16,18 +16,29 @@ const app = express();
 
 app.set('trust proxy', 1);
 
-const allowedOrigin = process.env.CLIENT_URL;
+// THE FIX: Array of multiple allowed origins
+const allowedOrigins = [
+  process.env.CLIENT_URL, // Railway env variable (e.g., the long preview URL)
+  'https://evalx-nine.vercel.app', // Vercel main production URL
+  'http://localhost:5173' // Local development fallback
+].filter(Boolean); // filter(Boolean) removes any null/undefined entries safely
 
-console.log('CORS origin set to:', allowedOrigin);
+console.log('CORS origins allowed:', allowedOrigins);
 
-if (!allowedOrigin) {
-  console.error('CRITICAL: CLIENT_URL is not set. CORS will block all credentialed requests.');
+if (!process.env.CLIENT_URL) {
+  console.error('CRITICAL: CLIENT_URL is not set. CORS might block credentialed requests.');
 }
 
 const corsOptions = {
   origin: (origin, callback) => {
+    // Allow requests with no origin (like Postman or server-to-server)
     if (!origin) return callback(null, true);
-    if (origin === allowedOrigin) return callback(null, true);
+    
+    // Check if the incoming origin exists in our allowed array
+    if (allowedOrigins.includes(origin)) {
+      return callback(null, true);
+    }
+    
     console.warn(`CORS blocked request from origin: ${origin}`);
     callback(new Error(`Origin ${origin} not allowed`));
   },
