@@ -155,7 +155,7 @@ export const updateUserRole = asyncHandler(async (req, res) => {
   const user = await User.findByIdAndUpdate(
     req.params.id,
     { role },
-    { new: true }
+    { returnDocument: 'after' }
   ).select('-passwordHash -otp -otpExpiry -refreshToken');
 
   if (!user) throw new ApiError(404, 'User not found');

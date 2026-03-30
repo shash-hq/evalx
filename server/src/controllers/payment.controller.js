@@ -19,7 +19,7 @@ const confirmRegistration = async (session, { userId, contestId, transactionId }
   const registration = await Registration.findOneAndUpdate(
     { userId, contestId },
     { status: 'confirmed', transactionId },
-    { session, new: true, upsert: true }
+    { session, returnDocument: 'after', upsert: true }
   );
 
   await Contest.findByIdAndUpdate(
@@ -71,7 +71,7 @@ export const createOrder = asyncHandler(async (req, res) => {
       const registration = await Registration.findOneAndUpdate(
         { userId: req.user._id, contestId },
         { status: 'confirmed', transactionId: null },
-        { session, new: true, upsert: true }
+        { session, returnDocument: 'after', upsert: true }
       );
       await Contest.findByIdAndUpdate(
         contestId,
@@ -232,4 +232,3 @@ export const getPaymentHistory = asyncHandler(async (req, res) => {
 
   res.json(new ApiResponse(200, transactions));
 });
-
