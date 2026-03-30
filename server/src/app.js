@@ -20,7 +20,9 @@ app.set('trust proxy', 1);
 const allowedOrigins = [
   process.env.CLIENT_URL, // Railway env variable (e.g., the long preview URL)
   'https://evalx-nine.vercel.app', // Vercel main production URL
-  'http://localhost:5173' // Local development fallback
+  'http://localhost:5173', // Local development fallback
+  'https://evalx.in',
+  'https://www.evalx.in'
 ].filter(Boolean); // filter(Boolean) removes any null/undefined entries safely
 
 console.log('CORS origins allowed:', allowedOrigins);
@@ -50,7 +52,9 @@ const corsOptions = {
 app.use(cors(corsOptions));
 app.options('(.*)', cors(corsOptions));
 
-app.use(helmet());
+app.use(helmet({
+  crossOriginResourcePolicy: { policy: "cross-origin" }
+}));
 app.use(morgan('dev'));
 app.use(cookieParser());
 
