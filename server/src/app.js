@@ -17,13 +17,13 @@ const app = express();
 app.set('trust proxy', 1);
 
 // THE FIX: Array of multiple allowed origins
-const allowedOrigins = [
+const allowedOrigins = [...new Set([
   process.env.CLIENT_URL, // Railway env variable (e.g., the long preview URL)
   'https://evalx-nine.vercel.app', // Vercel main production URL
   'http://localhost:5173', // Local development fallback
   'https://evalx.in',
   'https://www.evalx.in'
-].filter(Boolean); // filter(Boolean) removes any null/undefined entries safely
+].filter(Boolean))]; // filter(Boolean) removes any null/undefined entries safely
 
 console.log('CORS origins allowed:', allowedOrigins);
 
@@ -68,6 +68,11 @@ app.use('/api/problems', problemRoutes);
 app.use('/api/submissions', submissionRoutes);
 app.use('/api/payments', paymentRoutes);
 app.use('/api/admin', adminRoutes);
+
+app.get('/', (_, res) => res.json({
+  status: 'ok',
+  service: 'evalx-api',
+}));
 
 app.get('/health', (_, res) => res.json({ status: 'ok' }));
 

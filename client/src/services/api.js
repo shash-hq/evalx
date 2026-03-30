@@ -2,8 +2,10 @@ import axios from 'axios';
 import { store } from '../store/index.js';
 import { logout, setCredentials } from '../store/slices/authSlice.js';
 
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'https://api.evalx.in/api';
+
 const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || 'http://localhost:8000/api',
+  baseURL: API_BASE_URL,
   withCredentials: true,
 });
 
@@ -46,7 +48,7 @@ api.interceptors.response.use(
         if (!refreshToken) throw new Error('No refresh token');
 
         const { data } = await axios.post(
-          `${import.meta.env.VITE_API_URL || 'http://localhost:8000/api'}/auth/refresh-token`,
+          `${API_BASE_URL}/auth/refresh-token`,
           { refreshToken }
         );
 
