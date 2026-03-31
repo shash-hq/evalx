@@ -28,9 +28,9 @@ app.set('io', io);
 
 connectDB().then(() => {
   verifyMailService();
-  httpServer.listen(PORT, () => {
-    logger.info(`EvalX server running on port ${PORT}`);
-  });
+  httpServer.listen(PORT, '0.0.0.0', () => {
+  logger.info(`EvalX server running on port ${PORT}`);
+});
 }).catch((err) => {
   logger.fatal({ err }, 'Failed to connect to database');
   process.exit(1);
