@@ -4,6 +4,7 @@ import Submission from '../models/Submission.js';
 import Registration from '../models/Registration.js';
 import Transaction from '../models/Transaction.js';
 import { scheduleContestTransitions, cancelContestJobs } from '../services/schedule.service.js';
+import { createAuditLog } from '../services/auditLog.service.js';
 import { ApiError } from '../utils/ApiError.js';
 import { ApiResponse } from '../utils/ApiResponse.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
@@ -38,6 +39,7 @@ export const approveContest = asyncHandler(async (req, res) => {
   if (contest.isApprovedByAdmin) throw new ApiError(400, 'Contest already approved');
   if (contest.status !== 'draft') throw new ApiError(400, 'Only draft contests can be approved');
   if (!contest.problems.length) throw new ApiError(400, 'Contest must have at least one problem');
+  const previousStatus = contest.status;
 
   contest.isApprovedByAdmin = true;
   contest.status = 'upcoming';
@@ -46,6 +48,19 @@ export const approveContest = asyncHandler(async (req, res) => {
   // Schedule automated state transitions
   await scheduleContestTransitions(contest);
 
+  await createAuditLog({
+    req,
+    action: 'contest.approve',
+    targetType: 'contest',
+    targetId: contest._id,
+    targetLabel: contest.title,
+    details: {
+      previousStatus,
+      nextStatus: contest.status,
+      organizerId: contest.organizerId,
+    },
+  });
+
   res.json(new ApiResponse(200, contest, 'Contest approved and transitions scheduled'));
 });
 
@@ -53,11 +68,24 @@ export const approveContest = asyncHandler(async (req, res) => {
 export const rejectContest = asyncHandler(async (req, res) => {
   const contest = await Contest.findById(req.params.id);
   if (!contest) throw new ApiError(404, 'Contest not found');
+  const previousStatus = contest.status;
 
   contest.isApprovedByAdmin = false;
   contest.status = 'draft';
   await cancelContestJobs(req.params.id);
   await contest.save();
+
+  await createAuditLog({
+    req,
+    action: 'contest.reject',
+    targetType: 'contest',
+    targetId: contest._id,
+    targetLabel: contest.title,
+    details: {
+      previousStatus,
+      nextStatus: contest.status,
+    },
+  });
 
   res.json(new ApiResponse(200, null, 'Contest rejected and returned to draft'));
 });
@@ -69,6 +97,7 @@ export const triggerClose = asyncHandler(async (req, res) => {
   if (!['live', 'judging'].includes(contest.status)) {
     throw new ApiError(400, 'Can only force-close live or judging contests');
   }
+  const previousStatus = contest.status;
 
   contest.status = 'closed';
   await contest.save();
@@ -81,6 +110,18 @@ export const triggerClose = asyncHandler(async (req, res) => {
       status: 'closed',
     });
   } catch (_) {}
+
+  await createAuditLog({
+    req,
+    action: 'contest.force_close',
+    targetType: 'contest',
+    targetId: contest._id,
+    targetLabel: contest.title,
+    details: {
+      previousStatus,
+      nextStatus: contest.status,
+    },
+  });
 
   res.json(new ApiResponse(200, null, 'Contest force-closed'));
 });
@@ -116,6 +157,19 @@ export const processPayouts = asyncHandler(async (req, res) => {
   }
 
   await contest.save();
+
+  await createAuditLog({
+    req,
+    action: 'contest.process_payouts',
+    targetType: 'contest',
+    targetId: contest._id,
+    targetLabel: contest.title,
+    details: {
+      payoutCount: payouts.length,
+      totalPayoutAmount: payouts.reduce((sum, payout) => sum + payout.amount, 0),
+      payouts,
+    },
+  });
 
   res.json(new ApiResponse(200, payouts, 'Payouts processed'));
 });
@@ -155,6 +209,7 @@ export const updateUserRole = asyncHandler(async (req, res) => {
 
   const existingUser = await User.findById(req.params.id);
   if (!existingUser) throw new ApiError(404, 'User not found');
+  const previousRole = existingUser.role;
 
   if (
     existingUser.role === 'superadmin' &&
@@ -179,6 +234,18 @@ export const updateUserRole = asyncHandler(async (req, res) => {
     { role },
     { returnDocument: 'after' }
   ).select('-passwordHash -otp -otpExpiry -refreshTokenHash -refreshToken');
+
+  await createAuditLog({
+    req,
+    action: 'user.role_update',
+    targetType: 'user',
+    targetId: existingUser._id,
+    targetLabel: existingUser.email,
+    details: {
+      previousRole,
+      nextRole: role,
+    },
+  });
 
   res.json(new ApiResponse(200, user, 'Role updated'));
 });

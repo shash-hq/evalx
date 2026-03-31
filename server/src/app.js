@@ -11,6 +11,7 @@ import problemRoutes from './routes/problem.routes.js';
 import submissionRoutes from './routes/submission.routes.js';
 import paymentRoutes from './routes/payment.routes.js';
 import adminRoutes from './routes/admin.routes.js';
+import superadminRoutes from './routes/superadmin.routes.js';
 
 const app = express();
 
@@ -68,6 +69,7 @@ app.use('/api/problems', problemRoutes);
 app.use('/api/submissions', submissionRoutes);
 app.use('/api/payments', paymentRoutes);
 app.use('/api/admin', adminRoutes);
+app.use('/api/superadmin', superadminRoutes);
 
 app.get('/', (_, res) => res.json({
   status: 'ok',

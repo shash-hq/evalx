@@ -36,6 +36,11 @@ const judge0Client = axios.create({
 
 let cachedLanguages = null;
 let cachedLanguagesFetchedAt = 0;
+const judgeServiceTelemetry = {
+  lastSuccessfulAt: null,
+  lastErrorAt: null,
+  lastErrorMessage: null,
+};
 
 function parsePositiveNumber(value, fallback) {
   const parsed = Number(value);
@@ -52,6 +57,16 @@ function buildJudge0Headers() {
   }
 
   return headers;
+}
+
+function markJudgeSuccess() {
+  judgeServiceTelemetry.lastSuccessfulAt = new Date().toISOString();
+  judgeServiceTelemetry.lastErrorMessage = null;
+}
+
+function markJudgeFailure(message) {
+  judgeServiceTelemetry.lastErrorAt = new Date().toISOString();
+  judgeServiceTelemetry.lastErrorMessage = message;
 }
 
 function sleep(ms) {
@@ -190,8 +205,10 @@ async function fetchJudge0Languages() {
     const { data } = await judge0Client.get('/languages');
     cachedLanguages = Array.isArray(data) ? data : [];
     cachedLanguagesFetchedAt = Date.now();
+    markJudgeSuccess();
     return cachedLanguages;
   } catch (error) {
+    markJudgeFailure(formatJudge0Error(error, 'Unknown error'));
     if (Array.isArray(cachedLanguages) && cachedLanguages.length > 0) {
       return cachedLanguages;
     }
@@ -267,9 +284,12 @@ async function createBatchSubmission({ languageId, sourceCode, testCases, timeLi
       return item.token;
     });
 
+    markJudgeSuccess();
     return tokens;
   } catch (error) {
-    throw new Error(formatJudge0Error(error, 'Failed to submit code to Judge0'));
+    const message = formatJudge0Error(error, 'Failed to submit code to Judge0');
+    markJudgeFailure(message);
+    throw new Error(message);
   }
 }
 
@@ -286,9 +306,12 @@ async function fetchBatchResults(tokens) {
       throw new Error('Judge0 returned an unexpected batch result payload');
     }
 
+    markJudgeSuccess();
     return data.submissions;
   } catch (error) {
-    throw new Error(formatJudge0Error(error, 'Failed to read Judge0 batch results'));
+    const message = formatJudge0Error(error, 'Failed to read Judge0 batch results');
+    markJudgeFailure(message);
+    throw new Error(message);
   }
 }
 
@@ -374,6 +397,51 @@ export const runTestCase = async ({
     time: testCaseResult.time,
     memory: testCaseResult.memory,
   };
+};
+
+export const getJudgeServiceHealth = () => ({
+  provider: 'judge0',
+  baseUrl: JUDGE0_BASE_URL,
+  configured: Boolean(JUDGE0_BASE_URL),
+  cachedLanguageCount: Array.isArray(cachedLanguages) ? cachedLanguages.length : 0,
+  lastSuccessfulAt: judgeServiceTelemetry.lastSuccessfulAt,
+  lastErrorAt: judgeServiceTelemetry.lastErrorAt,
+  lastErrorMessage: judgeServiceTelemetry.lastErrorMessage,
+});
+
+export const probeJudgeService = async () => {
+  const startedAt = Date.now();
+
+  try {
+    const { data } = await judge0Client.get('/languages', {
+      timeout: Math.min(JUDGE0_REQUEST_TIMEOUT_MS, 5000),
+    });
+
+    if (!Array.isArray(data)) {
+      throw new Error('Judge0 returned an unexpected language list payload');
+    }
+
+    cachedLanguages = data;
+    cachedLanguagesFetchedAt = Date.now();
+    markJudgeSuccess();
+
+    return {
+      status: 'healthy',
+      latencyMs: Date.now() - startedAt,
+      languagesAvailable: data.length,
+      error: null,
+    };
+  } catch (error) {
+    const message = formatJudge0Error(error, 'Judge0 probe failed');
+    markJudgeFailure(message);
+
+    return {
+      status: 'down',
+      latencyMs: Date.now() - startedAt,
+      languagesAvailable: Array.isArray(cachedLanguages) ? cachedLanguages.length : 0,
+      error: message,
+    };
+  }
 };
 
 // Deprecated alias kept so older callers do not break while the service name changes.

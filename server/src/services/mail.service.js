@@ -5,6 +5,11 @@ const RESEND_API_KEY = process.env.RESEND_API_KEY || '';
 const MAIL_FROM = process.env.MAIL_FROM || '';
 const MAIL_REPLY_TO = process.env.MAIL_REPLY_TO || '';
 const MAIL_REQUEST_TIMEOUT_MS = parsePositiveNumber(process.env.MAIL_REQUEST_TIMEOUT_MS, 10000);
+const mailServiceTelemetry = {
+  lastSuccessfulAt: null,
+  lastErrorAt: null,
+  lastErrorMessage: null,
+};
 
 function parsePositiveNumber(value, fallback) {
   const parsed = Number(value);
@@ -16,6 +21,16 @@ function buildResendHeaders() {
     Authorization: `Bearer ${RESEND_API_KEY}`,
     'Content-Type': 'application/json',
   };
+}
+
+function markMailSuccess() {
+  mailServiceTelemetry.lastSuccessfulAt = new Date().toISOString();
+  mailServiceTelemetry.lastErrorMessage = null;
+}
+
+function markMailFailure(message) {
+  mailServiceTelemetry.lastErrorAt = new Date().toISOString();
+  mailServiceTelemetry.lastErrorMessage = message;
 }
 
 function assertMailConfig() {
@@ -80,12 +95,35 @@ export const sendOTPEmail = async (to, otp) => {
       timeout: MAIL_REQUEST_TIMEOUT_MS,
     });
 
+    markMailSuccess();
     console.log(`OTP sent successfully to ${to} via Resend (${data?.id || 'no-id'})`);
   } catch (error) {
     const message = formatMailError(error);
+    markMailFailure(message);
     console.error('Email sending failed:', message);
     throw new Error(message);
   }
+};
+
+export const getMailServiceHealth = () => {
+  const configured = Boolean(RESEND_API_KEY && MAIL_FROM);
+  const lastSuccessAt = mailServiceTelemetry.lastSuccessfulAt;
+  const lastErrorAt = mailServiceTelemetry.lastErrorAt;
+  const hasRecentError =
+    Boolean(lastErrorAt) &&
+    (!lastSuccessAt || new Date(lastErrorAt).getTime() > new Date(lastSuccessAt).getTime());
+
+  return {
+    status: !configured ? 'missing_config' : hasRecentError ? 'degraded' : 'healthy',
+    provider: 'resend',
+    configured,
+    baseUrl: RESEND_API_BASE_URL,
+    from: MAIL_FROM || null,
+    replyTo: MAIL_REPLY_TO || null,
+    lastSuccessfulAt: lastSuccessAt,
+    lastErrorAt,
+    lastErrorMessage: mailServiceTelemetry.lastErrorMessage,
+  };
 };
 
 export const verifyMailService = async () => {
