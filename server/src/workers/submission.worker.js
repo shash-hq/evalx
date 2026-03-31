@@ -4,6 +4,7 @@ import Problem from '../models/Problem.js';
 import { judgeSubmission } from '../services/judge.service.js';
 import { getIO } from '../config/socket.js';
 import { buildLeaderboard } from '../controllers/contest.controller.js';
+import logger from '../utils/logger.js';
 
 submissionQueue.process(5, async (job) => {
   const { submissionId } = job.data;
@@ -14,7 +15,6 @@ submissionQueue.process(5, async (job) => {
   const problem = await Problem.findById(submission.problemId);
   if (!problem) throw new Error(`Problem ${submission.problemId} not found`);
 
-  // Mark as processing
   submission.status = 'processing';
   await submission.save();
 
@@ -57,7 +57,6 @@ submissionQueue.process(5, async (job) => {
   if (finalStatus === 'accepted') {
     totalScore = problem.points;
 
-    // Check if this is first accepted for this problem by this user in this contest
     const previousAccepted = await Submission.findOne({
       userId: submission.userId,
       problemId: submission.problemId,
@@ -79,7 +78,6 @@ submissionQueue.process(5, async (job) => {
   submission.processedAt = new Date();
   await submission.save();
 
-  // Emit result to the submitting user's socket room
   try {
     const io = getIO();
     io.to(`user:${submission.userId}`).emit('submission:result', {
@@ -89,25 +87,23 @@ submissionQueue.process(5, async (job) => {
       testResults,
     });
 
-    // Broadcast leaderboard update to contest room
     if (finalStatus === 'accepted') {
       const leaderboard = await buildLeaderboard(submission.contestId.toString());
       io.to(`contest:${submission.contestId}`).emit('leaderboard:update', leaderboard);
     }
   } catch (err) {
-    console.error('Socket emit failed:', err.message);
-    // Non-fatal — submission is already saved
+    logger.error({ err: err.message }, 'Socket emit failed — non-fatal');
   }
 
   return { status: finalStatus, score: totalScore };
 });
 
 submissionQueue.on('failed', (job, err) => {
-  console.error(`Submission job ${job.id} failed:`, err.message);
+  logger.error({ jobId: job.id, err: err.message }, 'Submission job failed');
 });
 
 submissionQueue.on('completed', (job, result) => {
-  console.log(`Submission job ${job.id} completed:`, result.status);
+  logger.info({ jobId: job.id, status: result.status, score: result.score }, 'Submission job completed');
 });
 
-console.log('Submission worker online');
+logger.info('Submission worker online');

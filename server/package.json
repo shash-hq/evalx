@@ -5,7 +5,7 @@
   "main": "server.js",
   "type": "module",
   "scripts": {
-    "dev": "nodemon server.js",
+    "dev": "NODE_ENV=development nodemon server.js",
     "start": "node server.js"
   },
   "keywords": [],
@@ -25,11 +25,11 @@
     "ioredis": "^5.10.1",
     "jsonwebtoken": "^9.0.3",
     "mongoose": "^9.3.2",
-    "morgan": "^1.10.1",
     "nodemailer": "^8.0.4",
     "pino": "^10.3.1",
     "pino-http": "^11.0.0",
     "razorpay": "^2.9.6",
+    "resend": "^4.5.1",
     "slugify": "^1.6.8",
     "socket.io": "^4.8.3"
   },
