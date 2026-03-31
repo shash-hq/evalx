@@ -17,17 +17,21 @@ const app = express();
 
 app.set('trust proxy', 1);
 
-const allowedOrigin = process.env.CLIENT_URL;
-logger.info(`CORS origin set to: ${allowedOrigin}`);
+const allowedOrigins = [
+  process.env.CLIENT_URL,
+  'https://evalx-nine.vercel.app',
+].filter(Boolean);
 
-if (!allowedOrigin) {
+logger.info({ allowedOrigins }, 'CORS allowed origins');
+
+if (!process.env.CLIENT_URL) {
   logger.error('CRITICAL: CLIENT_URL is not set. CORS will block all credentialed requests.');
 }
 
 const corsOptions = {
   origin: (origin, callback) => {
     if (!origin) return callback(null, true);
-    if (origin === allowedOrigin) return callback(null, true);
+    if (allowedOrigins.includes(origin)) return callback(null, true);
     logger.warn({ origin }, 'CORS blocked request');
     callback(new Error(`Origin ${origin} not allowed`));
   },
@@ -41,10 +45,8 @@ app.options('(.*)', cors(corsOptions));
 app.use(helmet());
 app.use(cookieParser());
 
-// Pino HTTP middleware — replaces morgan
 app.use(pinoHttp({
   logger,
-  // Skip logging health checks — they're noise
   autoLogging: {
     ignore: (req) => req.url === '/health' || req.url === '/health/deep',
   },
