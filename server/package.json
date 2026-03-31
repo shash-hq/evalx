@@ -6,7 +6,11 @@
   "type": "module",
   "scripts": {
     "dev": "NODE_ENV=development nodemon server.js",
-    "start": "node server.js"
+    "dev:web": "NODE_ENV=development nodemon server.js",
+    "dev:worker": "NODE_ENV=development nodemon worker.js",
+    "start": "node server.js",
+    "start:web": "node server.js",
+    "start:worker": "node worker.js"
   },
   "keywords": [],
   "author": "",

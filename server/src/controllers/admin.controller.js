@@ -5,11 +5,14 @@ import Registration from '../models/Registration.js';
 import Transaction from '../models/Transaction.js';
 import { scheduleContestTransitions, cancelContestJobs } from '../services/schedule.service.js';
 import { createAuditLog } from '../services/auditLog.service.js';
+import { getLeaderboardSnapshot } from '../services/leaderboard.service.js';
+import { publishRealtimeEvent } from '../services/realtime.service.js';
 import { ApiError } from '../utils/ApiError.js';
 import { ApiResponse } from '../utils/ApiResponse.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
 import { parsePagination } from '../utils/pagination.js';
 import { isSuperAdminRole } from '../utils/roles.js';
+import logger from '../utils/logger.js';
 
 // GET /api/admin/contests
 export const getAllContests = asyncHandler(async (req, res) => {
@@ -110,12 +113,17 @@ export const triggerClose = asyncHandler(async (req, res) => {
   await cancelContestJobs(req.params.id);
 
   try {
-    const { getIO } = await import('../config/socket.js');
-    getIO().to(`contest:${req.params.id}`).emit('contest:status', {
+    await publishRealtimeEvent({
+      type: 'contest:status',
       contestId: req.params.id,
-      status: 'closed',
+      payload: {
+        contestId: req.params.id,
+        status: 'closed',
+      },
     });
-  } catch (_) {}
+  } catch (error) {
+    logger.warn({ err: error?.message, contestId: req.params.id }, 'Contest status broadcast failed');
+  }
 
   await createAuditLog({
     req,
@@ -139,8 +147,7 @@ export const processPayouts = asyncHandler(async (req, res) => {
   if (contest.status !== 'closed') throw new ApiError(400, 'Contest must be closed before payouts');
   if (!contest.prizeDistribution.length) throw new ApiError(400, 'No prize distribution defined');
 
-  const { buildLeaderboard } = await import('./contest.controller.js');
-  const leaderboard = await buildLeaderboard(req.params.id);
+  const leaderboard = await getLeaderboardSnapshot(req.params.id);
 
   const payouts = [];
 

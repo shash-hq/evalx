@@ -1,15 +1,11 @@
+import 'dotenv/config';
 import { createServer } from 'http';
 import { Server } from 'socket.io';
 import app from './src/app.js';
-import { connectDB } from './src/config/db.js';
 import { initSocket } from './src/config/socket.js';
-import { verifyMailService } from './src/services/mail.service.js';
+import { attachRealtimeBridge } from './src/services/realtime.service.js';
+import { ensureWebDependenciesReady } from './src/services/startup.service.js';
 import logger from './src/utils/logger.js';
-import './src/workers/submission.worker.js';
-import './src/workers/contest.worker.js';
-import dotenv from 'dotenv';
-
-dotenv.config();
 
 const PORT = process.env.PORT || 8000;
 
@@ -24,15 +20,22 @@ const io = new Server(httpServer, {
 });
 
 initSocket(io);
-app.set('io', io);
 
-connectDB().then(() => {
-  verifyMailService();
-  httpServer.listen(PORT, '0.0.0.0', () => {
-  logger.info(`EvalX server running on port ${PORT}`);
-});
-}).catch((err) => {
-  logger.fatal({ err }, 'Failed to connect to database');
-  process.exit(1);
-});
+const startServer = async () => {
+  try {
+    const readiness = await ensureWebDependenciesReady();
+    await attachRealtimeBridge(io);
 
+    httpServer.listen(PORT, '0.0.0.0', () => {
+      logger.info({
+        port: PORT,
+        readiness: [...readiness, 'realtime_bridge'],
+      }, 'EvalX server running');
+    });
+  } catch (error) {
+    logger.fatal({ err: error?.message || error }, 'Failed startup readiness checks');
+    process.exit(1);
+  }
+};
+
+startServer();

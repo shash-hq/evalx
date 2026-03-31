@@ -73,25 +73,12 @@ const getRedisHealth = async () => {
   };
 };
 
-export const getCoreConnectivityHealth = async () => {
-  const database = getMongoHealth();
-  const redisHealth = await getRedisHealth();
-  const status =
-    database.status === 'healthy' && redisHealth.status === 'healthy'
-      ? 'healthy'
-      : 'down';
-
-  return {
-    status,
-    checkedAt: new Date().toISOString(),
-    database,
-    redis: redisHealth,
-  };
-};
-
 const getQueueHealth = async (queueName, queue) => {
   const probe = await withTimeout(
-    () => queue.getJobCounts(),
+    async () => {
+      await queue.isReady();
+      return queue.getJobCounts();
+    },
     3000,
     `${queueName} queue probe timed out`
   );
@@ -102,6 +89,33 @@ const getQueueHealth = async (queueName, queue) => {
     latencyMs: probe.latencyMs,
     counts: probe.result || null,
     error: probe.error?.message || null,
+  };
+};
+
+export const getCoreConnectivityHealth = async () => {
+  const [redisHealth, submissionQueueHealth, contestQueueHealth] = await Promise.all([
+    getRedisHealth(),
+    getQueueHealth('submissions', submissionQueue),
+    getQueueHealth('contests', contestQueue),
+  ]);
+  const database = getMongoHealth();
+  const status =
+    database.status === 'healthy' &&
+    redisHealth.status === 'healthy' &&
+    submissionQueueHealth.status === 'healthy' &&
+    contestQueueHealth.status === 'healthy'
+      ? 'healthy'
+      : 'down';
+
+  return {
+    status,
+    checkedAt: new Date().toISOString(),
+    database,
+    redis: redisHealth,
+    queues: {
+      submissions: submissionQueueHealth,
+      contests: contestQueueHealth,
+    },
   };
 };
 

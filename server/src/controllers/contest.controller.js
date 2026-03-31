@@ -6,6 +6,7 @@ import { ApiResponse } from '../utils/ApiResponse.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
 import { parsePagination } from '../utils/pagination.js';
 import { isAdminRole } from '../utils/roles.js';
+import { getLeaderboardSnapshot } from '../services/leaderboard.service.js';
 
 
 const generateSlug = async (title) => {
@@ -157,72 +158,81 @@ export const getContestProblems = asyncHandler(async (req, res) => {
   res.json(new ApiResponse(200, contest.problems));
 });
 
+// GET /api/contests/:id/arena
+export const getContestArena = asyncHandler(async (req, res) => {
+  const contest = await Contest.findById(req.params.id)
+    .populate('organizerId', 'name email')
+    .populate({
+      path: 'problems',
+      select: '-testCases',
+    })
+    .lean();
+
+  if (!contest) throw new ApiError(404, 'Contest not found');
+
+  const allowedStatuses = ['live', 'judging', 'closed'];
+  if (!allowedStatuses.includes(contest.status)) {
+    throw new ApiError(403, 'Arena is only accessible during or after the contest');
+  }
+
+  const registration = await Registration.findOne({
+    userId: req.user._id,
+    contestId: contest._id,
+    status: 'confirmed',
+  });
+
+  if (!registration && !isAdminRole(req.user.role)) {
+    throw new ApiError(403, 'You are not registered for this contest');
+  }
+
+  const { problems, participants, ...contestData } = contest;
+
+  res.json(new ApiResponse(200, {
+    contest: contestData,
+    problems,
+  }));
+});
+
 // GET /api/contests/:id/leaderboard
 export const getLeaderboard = asyncHandler(async (req, res) => {
   const { id } = req.params;
 
-  const leaderboard = await buildLeaderboard(id);
+  const leaderboard = await getLeaderboardSnapshot(id);
   res.json(new ApiResponse(200, leaderboard));
 });
 
 // GET /api/contests/:id/my-submissions
 export const getMySubmissions = asyncHandler(async (req, res) => {
   const Submission = (await import('../models/Submission.js')).default;
+  const { page = 1, limit = 20 } = req.query;
+  const pagination = parsePagination(page, limit, 20);
 
-  const submissions = await Submission.find({
-    contestId: req.params.id,
-    userId: req.user._id,
-  })
-    .populate('problemId', 'title slug points')
-    .sort({ submittedAt: -1 })
-    .lean();
+  const [submissions, total] = await Promise.all([
+    Submission.find({
+      contestId: req.params.id,
+      userId: req.user._id,
+    })
+      .populate('problemId', 'title slug points')
+      .sort({ submittedAt: -1 })
+      .skip(pagination.skip)
+      .limit(pagination.limit)
+      .lean(),
+    Submission.countDocuments({
+      contestId: req.params.id,
+      userId: req.user._id,
+    }),
+  ]);
 
-  res.json(new ApiResponse(200, submissions));
+  res.json(new ApiResponse(200, {
+    submissions,
+    pagination: {
+      total,
+      page: pagination.page,
+      pages: Math.ceil(total / pagination.limit),
+      limit: pagination.limit,
+    },
+  }));
 });
 
 // ── Internal helper ──
-export const buildLeaderboard = async (contestId) => {
-  const Submission = (await import('../models/Submission.js')).default;
-
-  const results = await Submission.aggregate([
-    { $match: { contestId: new (await import('mongoose')).default.Types.ObjectId(contestId), status: 'accepted' } },
-    { $sort: { submittedAt: 1 } },
-    {
-      $group: {
-        _id: { userId: '$userId', problemId: '$problemId' },
-        score: { $first: '$score' },
-        submittedAt: { $first: '$submittedAt' },
-      },
-    },
-    {
-      $group: {
-        _id: '$_id.userId',
-        totalScore: { $sum: '$score' },
-        lastSubmission: { $max: '$submittedAt' },
-        solvedCount: { $sum: 1 },
-      },
-    },
-    { $sort: { totalScore: -1, lastSubmission: 1 } },
-    {
-      $lookup: {
-        from: 'users',
-        localField: '_id',
-        foreignField: '_id',
-        as: 'user',
-      },
-    },
-    { $unwind: '$user' },
-    {
-      $project: {
-        _id: 0,
-        userId: '$_id',
-        name: '$user.name',
-        totalScore: 1,
-        solvedCount: 1,
-        lastSubmission: 1,
-      },
-    },
-  ]);
-
-  return results.map((entry, index) => ({ rank: index + 1, ...entry }));
-};
+export const buildLeaderboard = async (contestId) => getLeaderboardSnapshot(contestId);

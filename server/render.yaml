@@ -1,12 +1,19 @@
 services:
   - type: web
-    name: evalx-server
+    name: evalx-web
     runtime: node
     rootDir: server
     buildCommand: npm install
-    startCommand: node server.js
+    startCommand: npm run start:web
     envVars:
       - key: NODE_ENV
         value: production
-      - key: PORT
-        value: 10000
+  - type: worker
+    name: evalx-worker
+    runtime: node
+    rootDir: server
+    buildCommand: npm install
+    startCommand: npm run start:worker
+    envVars:
+      - key: NODE_ENV
+        value: production

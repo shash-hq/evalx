@@ -5,6 +5,8 @@ import cookieParser from 'cookie-parser';
 import pinoHttp from 'pino-http';
 import logger from './utils/logger.js';
 import { errorHandler } from './middleware/errorHandler.js';
+import { asyncHandler } from './utils/asyncHandler.js';
+import { getCoreConnectivityHealth } from './services/platformHealth.service.js';
 
 import authRoutes from './routes/auth.routes.js';
 import contestRoutes from './routes/contest.routes.js';
@@ -79,6 +81,10 @@ app.use('/api/payments', paymentRoutes);
 app.use('/api/admin', adminRoutes);
 
 app.get('/health', (_, res) => res.json({ status: 'ok' }));
+app.get('/health/deep', asyncHandler(async (_, res) => {
+  const health = await getCoreConnectivityHealth();
+  res.status(health.status === 'healthy' ? 200 : 503).json(health);
+}));
 
 app.use(errorHandler);
 

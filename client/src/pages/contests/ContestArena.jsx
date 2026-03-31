@@ -1,11 +1,11 @@
-import {useEffect, useState, useRef} from 'react';
+import {useEffect, useState} from 'react';
 import {useParams, useNavigate} from 'react-router-dom';
 import {useDispatch, useSelector} from 'react-redux';
 import {useAuth} from '../../hooks/useAuth.js';
 import {useSocket} from '../../hooks/useSocket.js';
 import {useContestTimer} from '../../hooks/useContestTimer.js';
 import {
-  getContestProblems,
+  getContestArena,
   getLeaderboard,
 } from '../../services/contestService.js';
 import {createSubmission} from '../../services/submissionService.js';
@@ -29,10 +29,10 @@ const BOILERPLATE = {
 
 export default function ContestArena() {
   const {contestId} = useParams();
-  const {user} = useAuth();
+  const {user, accessToken} = useAuth();
   const navigate = useNavigate();
   const dispatch = useDispatch();
-  const socketRef = useSocket();
+  const socket = useSocket(accessToken);
   const {current: submissionStatus, pending} = useSelector(s => s.submissions);
 
   const [problems, setProblems] = useState([]);
@@ -47,24 +47,27 @@ export default function ContestArena() {
   const {timeLeft, isExpired} = useContestTimer(contest?.endTime);
 
   useEffect(() => {
-    Promise.all([getContestProblems(contestId), getLeaderboard(contestId)])
-      .then(([pRes, lRes]) => {
-        const p = pRes.data.data;
-        setProblems(p);
-        if (p.length) setSelectedProblem(p[0]);
+    Promise.all([getContestArena(contestId), getLeaderboard(contestId)])
+      .then(([arenaRes, lRes]) => {
+        const arena = arenaRes.data.data;
+        const nextProblems = arena.problems || [];
+
+        setContest(arena.contest);
+        setProblems(nextProblems);
+        setSelectedProblem(nextProblems[0] || null);
         setLeaderboard(lRes.data.data);
       })
       .catch(() => navigate('/contests'));
-  }, [contestId]);
+  }, [contestId, navigate]);
 
   useEffect(() => {
-    const socket = socketRef.current;
     if (!socket || !user) return;
 
-    socket.emit('join:contest', contestId);
-    socket.emit('join:user', user._id);
+    const handleConnect = () => {
+      socket.emit('join:contest', contestId);
+    };
 
-    socket.on('submission:result', result => {
+    const handleSubmissionResult = result => {
       dispatch(setSubmissionResult(result));
       const isAC = result.status === 'accepted';
       setToast({
@@ -74,23 +77,53 @@ export default function ContestArena() {
           : result.status.replace(/_/g, ' ').toUpperCase(),
       });
       setTimeout(() => setToast(null), 4000);
-    });
+    };
 
-    socket.on('leaderboard:update', data => {
+    const handleLeaderboardUpdate = data => {
       setLeaderboard(data);
-    });
+    };
 
-    socket.on('contest:status', ({status}) => {
+    const handleContestStatus = ({status}) => {
       setContest(prev => (prev ? {...prev, status} : prev));
-    });
+    };
+
+    const handleSocketError = ({message}) => {
+      setToast({
+        type: 'error',
+        message: message || 'SOCKET ACCESS DENIED',
+      });
+      setTimeout(() => setToast(null), 4000);
+    };
+
+    const handleConnectError = () => {
+      setToast({
+        type: 'error',
+        message: 'LIVE CONNECTION FAILED',
+      });
+      setTimeout(() => setToast(null), 4000);
+    };
+
+    if (socket.connected) {
+      handleConnect();
+    }
+
+    socket.on('connect', handleConnect);
+    socket.on('submission:result', handleSubmissionResult);
+    socket.on('leaderboard:update', handleLeaderboardUpdate);
+    socket.on('contest:status', handleContestStatus);
+    socket.on('socket:error', handleSocketError);
+    socket.on('connect_error', handleConnectError);
 
     return () => {
       socket.emit('leave:contest', contestId);
-      socket.off('submission:result');
-      socket.off('leaderboard:update');
-      socket.off('contest:status');
+      socket.off('connect', handleConnect);
+      socket.off('submission:result', handleSubmissionResult);
+      socket.off('leaderboard:update', handleLeaderboardUpdate);
+      socket.off('contest:status', handleContestStatus);
+      socket.off('socket:error', handleSocketError);
+      socket.off('connect_error', handleConnectError);
     };
-  }, [socketRef.current, user]);
+  }, [contestId, dispatch, socket, user]);
 
   const handleLanguageChange = lang => {
     setLanguage(lang);

@@ -1,7 +1,8 @@
 import contestQueue from '../queues/contest.queue.js';
 import Contest from '../models/Contest.js';
-import Submission from '../models/Submission.js';
-import { getIO } from '../config/socket.js';
+import { maybeScheduleContestClose } from '../services/contestLifecycle.service.js';
+import { publishRealtimeEvent } from '../services/realtime.service.js';
+import logger from '../utils/logger.js';
 
 contestQueue.process('transition', async (job) => {
   const { contestId, targetStatus } = job.data;
@@ -17,24 +18,25 @@ contestQueue.process('transition', async (job) => {
   };
 
   if (validTransitions[contest.status] !== targetStatus) {
-    console.warn(`Skipping transition: ${contest.status} → ${targetStatus} not valid`);
+    logger.warn({ contestId, currentStatus: contest.status, targetStatus }, 'Skipping invalid contest transition');
     return { skipped: true };
   }
 
   contest.status = targetStatus;
   await contest.save();
 
-  console.log(`Contest ${contestId} transitioned to: ${targetStatus}`);
+  logger.info({ contestId, targetStatus }, 'Contest transitioned');
 
-  // Notify all clients in contest room
   try {
-    const io = getIO();
-    io.to(`contest:${contestId}`).emit('contest:status', { contestId, status: targetStatus });
+    await publishRealtimeEvent({
+      type: 'contest:status',
+      contestId: contestId.toString(),
+      payload: { contestId, status: targetStatus },
+    });
   } catch (err) {
-    console.error('Socket emit failed:', err.message);
+    logger.error({ err: err.message, contestId }, 'Realtime publish failed — non-fatal');
   }
 
-  // When contest goes live → schedule judging transition
   if (targetStatus === 'live') {
     const delay = new Date(contest.endTime).getTime() - Date.now();
     if (delay > 0) {
@@ -43,47 +45,19 @@ contestQueue.process('transition', async (job) => {
         { contestId, targetStatus: 'judging' },
         { delay, jobId: `judging:${contestId}` }
       );
-      console.log(`Scheduled judging transition for ${contestId} in ${Math.round(delay / 60000)}m`);
+      logger.info({ contestId, delayMinutes: Math.round(delay / 60000) }, 'Scheduled judging transition');
     }
   }
 
-  // When contest enters judging → check if all submissions processed, then close
   if (targetStatus === 'judging') {
-    await checkAndClose(contestId);
+    await maybeScheduleContestClose(contestId);
   }
 
   return { status: targetStatus };
 });
 
-// Poll every 30s until queue drains, then close
-const checkAndClose = async (contestId) => {
-  const pendingCount = await Submission.countDocuments({
-    contestId,
-    status: { $in: ['queued', 'processing'] },
-  });
-
-  if (pendingCount === 0) {
-    await contestQueue.add(
-      'transition',
-      { contestId, targetStatus: 'closed' },
-      { delay: 5000, jobId: `closed:${contestId}` }
-    );
-  } else {
-    console.log(`${pendingCount} submissions still pending for ${contestId}, rechecking in 30s`);
-    await contestQueue.add(
-      'check-close',
-      { contestId },
-      { delay: 30000, jobId: `check-close:${contestId}:${Date.now()}` }
-    );
-  }
-};
-
-contestQueue.process('check-close', async (job) => {
-  await checkAndClose(job.data.contestId);
-});
-
 contestQueue.on('failed', (job, err) => {
-  console.error(`Contest job ${job.id} failed:`, err.message);
+  logger.error({ jobId: job?.id, err: err.message }, 'Contest job failed');
 });
 
-console.log('Contest worker online');
+logger.info('Contest worker online');
