@@ -5,6 +5,7 @@ const userSchema = new mongoose.Schema({
   name: { type: String, required: true, trim: true },
   email: { type: String, required: true, unique: true, lowercase: true, trim: true },
   passwordHash: { type: String, required: true },
+  college: { type: String, default: null, lowercase: true, trim: true },
   role: { type: String, enum: ['contestant', 'organizer', 'admin', 'superadmin'], default: 'contestant' },
   isEmailVerified: { type: Boolean, default: false },
   otp: { type: String, default: null },
@@ -14,6 +15,8 @@ const userSchema = new mongoose.Schema({
   contestsEntered: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Contest' }],
   refreshTokenHash: { type: String, default: null },
 }, { timestamps: true });
+
+userSchema.index({ rating: -1 });
 
 userSchema.pre('save', async function () {
   // If the passwordHash field hasn't been modified, exit the hook

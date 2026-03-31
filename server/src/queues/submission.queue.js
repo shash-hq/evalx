@@ -1,11 +1,10 @@
 import Bull from 'bull';
+import { getBullRedisOptions } from '../config/redis.js';
 
-const redisConfig = process.env.NODE_ENV === 'production'
-  ? {
-      redis: process.env.REDIS_URL,
-      settings: { stalledInterval: 30000 },
-    }
-  : { redis: process.env.REDIS_URL };
+const redisConfig = {
+  redis: getBullRedisOptions(),
+  settings: { stalledInterval: 30000 },
+};
 
 const submissionQueue = new Bull('submissions', {
   ...redisConfig,
@@ -15,6 +14,14 @@ const submissionQueue = new Bull('submissions', {
     removeOnComplete: 100,
     removeOnFail: 50,
   },
+});
+
+submissionQueue.on('error', (error) => {
+  console.error('Submission queue error:', {
+    name: error?.name || 'UnknownError',
+    message: error?.message || null,
+    code: error?.code || null,
+  });
 });
 
 export default submissionQueue;

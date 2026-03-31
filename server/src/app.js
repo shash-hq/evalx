@@ -4,6 +4,8 @@ import helmet from 'helmet';
 import morgan from 'morgan';
 import cookieParser from 'cookie-parser';
 import { errorHandler } from './middleware/errorHandler.js';
+import { asyncHandler } from './utils/asyncHandler.js';
+import { getCoreConnectivityHealth } from './services/platformHealth.service.js';
 
 import authRoutes from './routes/auth.routes.js';
 import contestRoutes from './routes/contest.routes.js';
@@ -77,6 +79,11 @@ app.get('/', (_, res) => res.json({
 }));
 
 app.get('/health', (_, res) => res.json({ status: 'ok' }));
+
+app.get('/health/deep', asyncHandler(async (_, res) => {
+  const health = await getCoreConnectivityHealth();
+  res.status(health.status === 'healthy' ? 200 : 503).json(health);
+}));
 
 app.use(errorHandler);
 

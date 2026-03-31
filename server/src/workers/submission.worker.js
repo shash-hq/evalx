@@ -5,7 +5,7 @@ import { judgeSubmission } from '../services/judge.service.js';
 import { getIO } from '../config/socket.js';
 import { buildLeaderboard } from '../controllers/contest.controller.js';
 
-submissionQueue.process(async (job) => {
+submissionQueue.process(5, async (job) => {
   const { submissionId } = job.data;
 
   const submission = await Submission.findById(submissionId);

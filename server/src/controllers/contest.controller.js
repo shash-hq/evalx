@@ -4,6 +4,7 @@ import Registration from '../models/Registration.js';
 import { ApiError } from '../utils/ApiError.js';
 import { ApiResponse } from '../utils/ApiResponse.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
+import { parsePagination } from '../utils/pagination.js';
 import { isAdminRole } from '../utils/roles.js';
 
 
@@ -22,21 +23,26 @@ export const getContests = asyncHandler(async (req, res) => {
   if (status) query.status = status;
   if (search) query.title = { $regex: search, $options: 'i' };
 
-  const skip = (Number(page) - 1) * Number(limit);
+  const pagination = parsePagination(page, limit, 10);
 
   const [contests, total] = await Promise.all([
     Contest.find(query)
       .populate('organizerId', 'name')
       .sort({ startTime: 1 })
-      .skip(skip)
-      .limit(Number(limit))
+      .skip(pagination.skip)
+      .limit(pagination.limit)
       .lean(),
     Contest.countDocuments(query),
   ]);
 
   res.json(new ApiResponse(200, {
     contests,
-    pagination: { total, page: Number(page), pages: Math.ceil(total / limit) },
+    pagination: {
+      total,
+      page: pagination.page,
+      pages: Math.ceil(total / pagination.limit),
+      limit: pagination.limit,
+    },
   }));
 });
 

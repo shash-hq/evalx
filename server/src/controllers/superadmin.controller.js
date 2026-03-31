@@ -2,6 +2,7 @@ import AuditLog from '../models/AuditLog.js';
 import { ApiResponse } from '../utils/ApiResponse.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
 import { getPlatformHealth } from '../services/platformHealth.service.js';
+import { parsePagination } from '../utils/pagination.js';
 
 // GET /api/superadmin/health
 export const getSuperAdminHealth = asyncHandler(async (req, res) => {
@@ -12,9 +13,7 @@ export const getSuperAdminHealth = asyncHandler(async (req, res) => {
 // GET /api/superadmin/audit-logs
 export const getAuditLogs = asyncHandler(async (req, res) => {
   const { page = 1, limit = 25, action, status, search } = req.query;
-  const safePage = Math.max(1, Number(page) || 1);
-  const safeLimit = Math.min(100, Math.max(1, Number(limit) || 25));
-  const skip = (safePage - 1) * safeLimit;
+  const pagination = parsePagination(page, limit, 25);
 
   const query = {};
 
@@ -35,8 +34,8 @@ export const getAuditLogs = asyncHandler(async (req, res) => {
   const [logs, total] = await Promise.all([
     AuditLog.find(query)
       .sort({ createdAt: -1 })
-      .skip(skip)
-      .limit(safeLimit)
+      .skip(pagination.skip)
+      .limit(pagination.limit)
       .lean(),
     AuditLog.countDocuments(query),
   ]);
@@ -45,9 +44,9 @@ export const getAuditLogs = asyncHandler(async (req, res) => {
     logs,
     pagination: {
       total,
-      page: safePage,
-      pages: Math.ceil(total / safeLimit),
-      limit: safeLimit,
+      page: pagination.page,
+      pages: Math.ceil(total / pagination.limit),
+      limit: pagination.limit,
     },
   }));
 });

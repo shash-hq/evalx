@@ -34,10 +34,9 @@ const submissionSchema = new mongoose.Schema({
 }, { timestamps: false });
 
 submissionSchema.index({ userId: 1, contestId: 1 });
-submissionSchema.index({ contestId: 1, status: 1 });
+submissionSchema.index({ contestId: 1, status: 1, submittedAt: -1 });
 submissionSchema.index({ problemId: 1, userId: 1, contestId: 1 });
 
 export default mongoose.model('Submission', submissionSchema);
-
 
 

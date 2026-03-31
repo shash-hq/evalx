@@ -29,9 +29,8 @@ const contestSchema = new mongoose.Schema({
   isApprovedByAdmin: { type: Boolean, default: false },
 }, { timestamps: true });
 
-contestSchema.index({ status: 1, startTime: 1 });
+contestSchema.index({ status: 1, startTime: 1, isApprovedByAdmin: 1 });
 contestSchema.index({ organizerId: 1 });
 
 export default mongoose.model('Contest', contestSchema);
-
 

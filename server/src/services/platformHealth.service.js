@@ -73,6 +73,22 @@ const getRedisHealth = async () => {
   };
 };
 
+export const getCoreConnectivityHealth = async () => {
+  const database = getMongoHealth();
+  const redisHealth = await getRedisHealth();
+  const status =
+    database.status === 'healthy' && redisHealth.status === 'healthy'
+      ? 'healthy'
+      : 'down';
+
+  return {
+    status,
+    checkedAt: new Date().toISOString(),
+    database,
+    redis: redisHealth,
+  };
+};
+
 const getQueueHealth = async (queueName, queue) => {
   const probe = await withTimeout(
     () => queue.getJobCounts(),

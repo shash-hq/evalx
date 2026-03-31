@@ -40,7 +40,7 @@ const resolveRefreshTokenUser = async (token) => {
 
 // POST /api/auth/register
 export const register = asyncHandler(async (req, res) => {
-  const { name, password } = req.body;
+  const { name, password, college } = req.body;
   const email = normalizeEmail(req.body.email);
   if (!name || !email || !password) throw new ApiError(400, 'All fields are required');
   if (password.length < 8) throw new ApiError(400, 'Password must be at least 8 characters');
@@ -53,13 +53,21 @@ export const register = asyncHandler(async (req, res) => {
 
   if (existing && !existing.isEmailVerified) {
     existing.name = name;
+    existing.college = college || null;
     existing.passwordHash = password;
     existing.otp = otp;
     existing.otpExpiry = otpExpiry;
     existing.otpAttempts = 0;
     await existing.save();
   } else {
-    await User.create({ name, email, passwordHash: password, otp, otpExpiry });
+    await User.create({
+      name,
+      email,
+      college: college || null,
+      passwordHash: password,
+      otp,
+      otpExpiry,
+    });
   }
 
   try {

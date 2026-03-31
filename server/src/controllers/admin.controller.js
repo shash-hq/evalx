@@ -8,27 +8,33 @@ import { createAuditLog } from '../services/auditLog.service.js';
 import { ApiError } from '../utils/ApiError.js';
 import { ApiResponse } from '../utils/ApiResponse.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
+import { parsePagination } from '../utils/pagination.js';
 import { isSuperAdminRole } from '../utils/roles.js';
 
 // GET /api/admin/contests
 export const getAllContests = asyncHandler(async (req, res) => {
   const { status, page = 1, limit = 20 } = req.query;
   const query = status ? { status } : {};
-  const skip = (Number(page) - 1) * Number(limit);
+  const pagination = parsePagination(page, limit, 20);
 
   const [contests, total] = await Promise.all([
     Contest.find(query)
       .populate('organizerId', 'name email')
       .sort({ createdAt: -1 })
-      .skip(skip)
-      .limit(Number(limit))
+      .skip(pagination.skip)
+      .limit(pagination.limit)
       .lean(),
     Contest.countDocuments(query),
   ]);
 
   res.json(new ApiResponse(200, {
     contests,
-    pagination: { total, page: Number(page), pages: Math.ceil(total / limit) },
+    pagination: {
+      total,
+      page: pagination.page,
+      pages: Math.ceil(total / pagination.limit),
+      limit: pagination.limit,
+    },
   }));
 });
 
@@ -181,22 +187,26 @@ export const getAllUsers = asyncHandler(async (req, res) => {
     { name: { $regex: search, $options: 'i' } },
     { email: { $regex: search, $options: 'i' } },
   ]} : {};
-
-  const skip = (Number(page) - 1) * Number(limit);
+  const pagination = parsePagination(page, limit, 20);
 
   const [users, total] = await Promise.all([
     User.find(query)
       .select('-passwordHash -otp -otpExpiry -refreshTokenHash -refreshToken')
       .sort({ createdAt: -1 })
-      .skip(skip)
-      .limit(Number(limit))
+      .skip(pagination.skip)
+      .limit(pagination.limit)
       .lean(),
     User.countDocuments(query),
   ]);
 
   res.json(new ApiResponse(200, {
     users,
-    pagination: { total, page: Number(page), pages: Math.ceil(total / limit) },
+    pagination: {
+      total,
+      page: pagination.page,
+      pages: Math.ceil(total / pagination.limit),
+      limit: pagination.limit,
+    },
   }));
 });
 
