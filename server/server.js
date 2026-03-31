@@ -3,7 +3,7 @@ import { Server } from 'socket.io';
 import app from './src/app.js';
 import { connectDB } from './src/config/db.js';
 import { initSocket } from './src/config/socket.js';
-import { verifyMailTransport } from './src/services/mail.service.js';
+import { verifyMailService } from './src/services/mail.service.js';
 import logger from './src/utils/logger.js';
 import './src/workers/submission.worker.js';
 import './src/workers/contest.worker.js';
@@ -27,7 +27,7 @@ initSocket(io);
 app.set('io', io);
 
 connectDB().then(() => {
-  verifyMailTransport();
+  verifyMailService();
   httpServer.listen(PORT, () => {
     logger.info(`EvalX server running on port ${PORT}`);
   });
@@ -35,3 +35,4 @@ connectDB().then(() => {
   logger.fatal({ err }, 'Failed to connect to database');
   process.exit(1);
 });
+
