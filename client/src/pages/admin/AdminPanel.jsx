@@ -10,10 +10,13 @@ import {
   updateUserRole,
 } from '../../services/adminService.js';
 import ContestStatusBadge from '../../components/contest/ContestStatusBadge.jsx';
+import {useAuth} from '../../hooks/useAuth.js';
 
 const TABS = ['STATS', 'CONTESTS', 'USERS'];
 
-export default function AdminPanel() {
+export default function AdminPanel({mode = 'admin'}) {
+  const {isSuperAdmin} = useAuth();
+  const canManageRoles = mode === 'superadmin' && isSuperAdmin;
   const [tab, setTab] = useState('STATS');
   const [stats, setStats] = useState(null);
   const [contests, setContests] = useState([]);
@@ -82,10 +85,10 @@ export default function AdminPanel() {
     <div className="max-w-6xl mx-auto px-4 py-10">
       <div className="mb-8">
         <div className="font-mono text-xs text-muted mb-1 tracking-widest">
-          // SUPERUSER
+          {mode === 'superadmin' ? '// PLATFORM GOVERNANCE' : '// MODERATION'}
         </div>
         <h1 className="font-display text-4xl font-bold tracking-widest uppercase">
-          ADMIN PANEL
+          {mode === 'superadmin' ? 'SUPERADMIN CONSOLE' : 'ADMIN PANEL'}
         </h1>
       </div>
 
@@ -269,7 +272,9 @@ export default function AdminPanel() {
                     <td className="px-4 py-3">
                       <span
                         className={`font-mono text-xs px-2 py-0.5 border ${
-                          u.role === 'admin'
+                          u.role === 'superadmin'
+                            ? 'text-warning border-warning/30 bg-warning/10'
+                            : u.role === 'admin'
                             ? 'text-error border-error/30 bg-error/10'
                             : u.role === 'organizer'
                               ? 'text-accent border-accent/30 bg-accent-dim'
@@ -290,14 +295,21 @@ export default function AdminPanel() {
                       {new Date(u.createdAt).toLocaleDateString()}
                     </td>
                     <td className="px-4 py-3">
-                      <select
-                        value={u.role}
-                        onChange={e => handleRoleChange(u._id, e.target.value)}
-                        className="bg-surface border border-border text-text-secondary font-mono text-xs px-2 py-1 focus:outline-none focus:border-accent">
-                        <option value="contestant">CONTESTANT</option>
-                        <option value="organizer">ORGANIZER</option>
-                        <option value="admin">ADMIN</option>
-                      </select>
+                      {canManageRoles ? (
+                        <select
+                          value={u.role}
+                          onChange={e => handleRoleChange(u._id, e.target.value)}
+                          className="bg-surface border border-border text-text-secondary font-mono text-xs px-2 py-1 focus:outline-none focus:border-accent">
+                          <option value="contestant">CONTESTANT</option>
+                          <option value="organizer">ORGANIZER</option>
+                          <option value="admin">ADMIN</option>
+                          <option value="superadmin">SUPERADMIN</option>
+                        </select>
+                      ) : (
+                        <span className="font-mono text-xs text-muted">
+                          SUPERADMIN ONLY
+                        </span>
+                      )}
                     </td>
                   </tr>
                 ))

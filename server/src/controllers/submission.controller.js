@@ -7,6 +7,7 @@ import { isValidLanguage, PISTON_LANGUAGES } from '../utils/pistonLanguages.js';
 import { ApiError } from '../utils/ApiError.js';
 import { ApiResponse } from '../utils/ApiResponse.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
+import { isAdminRole } from '../utils/roles.js';
 
 // POST /api/submissions
 export const createSubmission = asyncHandler(async (req, res) => {
@@ -43,7 +44,7 @@ export const createSubmission = asyncHandler(async (req, res) => {
     contestId,
     status: 'confirmed',
   });
-  if (!registration && req.user.role !== 'admin') {
+  if (!registration && !isAdminRole(req.user.role)) {
     throw new ApiError(403, 'You are not registered for this contest');
   }
 
@@ -99,7 +100,7 @@ export const getSubmission = asyncHandler(async (req, res) => {
 
   if (
     submission.userId.toString() !== req.user._id.toString() &&
-    req.user.role !== 'admin'
+    !isAdminRole(req.user.role)
   ) {
     throw new ApiError(403, 'Not authorized');
   }

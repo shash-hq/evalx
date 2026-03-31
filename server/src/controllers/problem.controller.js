@@ -4,6 +4,7 @@ import Contest from '../models/Contest.js';
 import { ApiError } from '../utils/ApiError.js';
 import { ApiResponse } from '../utils/ApiResponse.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
+import { isAdminRole } from '../utils/roles.js';
 
 // POST /api/problems
 export const createProblem = asyncHandler(async (req, res) => {
@@ -21,7 +22,7 @@ export const createProblem = asyncHandler(async (req, res) => {
   if (!contest) throw new ApiError(404, 'Contest not found');
 
   const isOwner = contest.organizerId.toString() === req.user._id.toString();
-  if (!isOwner && req.user.role !== 'admin') throw new ApiError(403, 'Not authorized');
+  if (!isOwner && !isAdminRole(req.user.role)) throw new ApiError(403, 'Not authorized');
   if (contest.status !== 'draft') throw new ApiError(400, 'Cannot add problems after contest is published');
 
   let slug = slugify(title, { lower: true, strict: true });
@@ -59,7 +60,7 @@ export const updateProblem = asyncHandler(async (req, res) => {
 
   const contest = await Contest.findById(problem.contestId);
   const isOwner = contest.organizerId.toString() === req.user._id.toString();
-  if (!isOwner && req.user.role !== 'admin') throw new ApiError(403, 'Not authorized');
+  if (!isOwner && !isAdminRole(req.user.role)) throw new ApiError(403, 'Not authorized');
   if (contest.status !== 'draft') throw new ApiError(400, 'Cannot edit after contest published');
 
   const forbidden = ['contestId', 'slug'];
@@ -78,7 +79,7 @@ export const deleteProblem = asyncHandler(async (req, res) => {
 
   const contest = await Contest.findById(problem.contestId);
   const isOwner = contest.organizerId.toString() === req.user._id.toString();
-  if (!isOwner && req.user.role !== 'admin') throw new ApiError(403, 'Not authorized');
+  if (!isOwner && !isAdminRole(req.user.role)) throw new ApiError(403, 'Not authorized');
   if (contest.status !== 'draft') throw new ApiError(400, 'Cannot delete after contest published');
 
   await problem.deleteOne();

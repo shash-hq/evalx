@@ -1,5 +1,6 @@
 import {Navigate, Outlet} from 'react-router-dom';
 import {useAuth} from '../../hooks/useAuth.js';
+import {hasRoleAccess} from '../../utils/roles.js';
 
 export default function RoleRoute({roles}) {
   const {user, loading} = useAuth();
@@ -10,6 +11,6 @@ export default function RoleRoute({roles}) {
       </div>
     );
   if (!user) return <Navigate to="/login" replace />;
-  if (!roles.includes(user.role)) return <Navigate to="/" replace />;
+  if (!hasRoleAccess(user.role, ...roles)) return <Navigate to="/" replace />;
   return <Outlet />;
 }

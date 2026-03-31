@@ -7,6 +7,7 @@ import { scheduleContestTransitions, cancelContestJobs } from '../services/sched
 import { ApiError } from '../utils/ApiError.js';
 import { ApiResponse } from '../utils/ApiResponse.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
+import { isSuperAdminRole } from '../utils/roles.js';
 
 // GET /api/admin/contests
 export const getAllContests = asyncHandler(async (req, res) => {
@@ -131,7 +132,7 @@ export const getAllUsers = asyncHandler(async (req, res) => {
 
   const [users, total] = await Promise.all([
     User.find(query)
-      .select('-passwordHash -otp -otpExpiry -refreshToken')
+      .select('-passwordHash -otp -otpExpiry -refreshTokenHash -refreshToken')
       .sort({ createdAt: -1 })
       .skip(skip)
       .limit(Number(limit))
@@ -148,17 +149,36 @@ export const getAllUsers = asyncHandler(async (req, res) => {
 // PUT /api/admin/users/:id/role
 export const updateUserRole = asyncHandler(async (req, res) => {
   const { role } = req.body;
-  if (!['contestant', 'organizer', 'admin'].includes(role)) {
+  if (!['contestant', 'organizer', 'admin', 'superadmin'].includes(role)) {
     throw new ApiError(400, 'Invalid role');
+  }
+
+  const existingUser = await User.findById(req.params.id);
+  if (!existingUser) throw new ApiError(404, 'User not found');
+
+  if (
+    existingUser.role === 'superadmin' &&
+    role !== 'superadmin'
+  ) {
+    const superAdminCount = await User.countDocuments({ role: 'superadmin' });
+    if (superAdminCount <= 1) {
+      throw new ApiError(400, 'You cannot remove the last superadmin');
+    }
+  }
+
+  if (
+    req.user._id.toString() === req.params.id &&
+    isSuperAdminRole(req.user.role) &&
+    role !== 'superadmin'
+  ) {
+    throw new ApiError(400, 'Use another superadmin account before changing your own role');
   }
 
   const user = await User.findByIdAndUpdate(
     req.params.id,
     { role },
     { returnDocument: 'after' }
-  ).select('-passwordHash -otp -otpExpiry -refreshToken');
-
-  if (!user) throw new ApiError(404, 'User not found');
+  ).select('-passwordHash -otp -otpExpiry -refreshTokenHash -refreshToken');
 
   res.json(new ApiResponse(200, user, 'Role updated'));
 });

@@ -5,14 +5,14 @@ const userSchema = new mongoose.Schema({
   name: { type: String, required: true, trim: true },
   email: { type: String, required: true, unique: true, lowercase: true, trim: true },
   passwordHash: { type: String, required: true },
-  role: { type: String, enum: ['contestant', 'organizer', 'admin'], default: 'contestant' },
+  role: { type: String, enum: ['contestant', 'organizer', 'admin', 'superadmin'], default: 'contestant' },
   isEmailVerified: { type: Boolean, default: false },
   otp: { type: String, default: null },
   otpExpiry: { type: Date, default: null },
   otpAttempts: { type: Number, default: 0 },
   rating: { type: Number, default: 1200 },
   contestsEntered: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Contest' }],
-  refreshToken: { type: String, default: null },
+  refreshTokenHash: { type: String, default: null },
 }, { timestamps: true });
 
 userSchema.pre('save', async function () {
@@ -36,9 +36,9 @@ userSchema.methods.toSafeObject = function () {
   delete obj.otp;
   delete obj.otpExpiry;
   delete obj.otpAttempts;
+  delete obj.refreshTokenHash;
   delete obj.refreshToken;
   return obj;
 };
 
 export default mongoose.model('User', userSchema);
-

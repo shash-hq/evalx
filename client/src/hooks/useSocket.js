@@ -1,7 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { io } from 'socket.io-client';
-
-const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || 'https://api.evalx.in';
+import { SOCKET_URL } from '../config/runtime.js';
 
 export const useSocket = () => {
   const socketRef = useRef(null);

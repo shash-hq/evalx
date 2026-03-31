@@ -18,6 +18,6 @@ router.put('/contests/:id/reject', rejectContest);
 router.post('/contests/:id/trigger-close', triggerClose);
 router.post('/contests/:id/payouts', processPayouts);
 router.get('/users', getAllUsers);
-router.put('/users/:id/role', updateUserRole);
+router.put('/users/:id/role', requireRole('superadmin'), updateUserRole);
 
 export default router;

@@ -4,6 +4,7 @@ import Registration from '../models/Registration.js';
 import { ApiError } from '../utils/ApiError.js';
 import { ApiResponse } from '../utils/ApiResponse.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
+import { isAdminRole } from '../utils/roles.js';
 
 
 const generateSlug = async (title) => {
@@ -93,7 +94,7 @@ export const updateContest = asyncHandler(async (req, res) => {
   if (!contest) throw new ApiError(404, 'Contest not found');
 
   const isOwner = contest.organizerId.toString() === req.user._id.toString();
-  const isAdmin = req.user.role === 'admin';
+  const isAdmin = isAdminRole(req.user.role);
   if (!isOwner && !isAdmin) throw new ApiError(403, 'Not authorized');
 
   if (contest.status !== 'draft') {
@@ -115,7 +116,7 @@ export const deleteContest = asyncHandler(async (req, res) => {
   if (!contest) throw new ApiError(404, 'Contest not found');
 
   const isOwner = contest.organizerId.toString() === req.user._id.toString();
-  if (!isOwner && req.user.role !== 'admin') throw new ApiError(403, 'Not authorized');
+  if (!isOwner && !isAdminRole(req.user.role)) throw new ApiError(403, 'Not authorized');
   if (contest.status !== 'draft') throw new ApiError(400, 'Only draft contests can be deleted');
 
   await contest.deleteOne();
@@ -143,7 +144,7 @@ export const getContestProblems = asyncHandler(async (req, res) => {
     status: 'confirmed',
   });
 
-  if (!registration && req.user.role !== 'admin') {
+  if (!registration && !isAdminRole(req.user.role)) {
     throw new ApiError(403, 'You are not registered for this contest');
   }
 
@@ -219,4 +220,3 @@ export const buildLeaderboard = async (contestId) => {
 
   return results.map((entry, index) => ({ rank: index + 1, ...entry }));
 };
-

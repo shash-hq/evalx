@@ -13,8 +13,8 @@ export default function Register() {
     setError('');
     setLoading(true);
     try {
-      await register(form);
-      navigate('/verify-otp', {state: {email: form.email}});
+      const {data} = await register(form);
+      navigate('/verify-otp', {state: {email: data.data.email}});
     } catch (err) {
       setError(err.response?.data?.message || 'Registration failed');
     } finally {

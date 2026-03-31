@@ -5,24 +5,43 @@ import { sendOTPEmail } from '../services/mail.service.js';
 import { ApiError } from '../utils/ApiError.js';
 import { ApiResponse } from '../utils/ApiResponse.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
+import {
+  generateTokens,
+  hashRefreshToken,
+  setRefreshTokenCookie,
+  clearRefreshTokenCookie,
+  getRefreshTokenFromRequest,
+} from '../utils/authTokens.js';
 
-const generateTokens = (userId) => {
-  const accessToken = jwt.sign(
-    { _id: userId },
-    process.env.ACCESS_TOKEN_SECRET,
-    { expiresIn: process.env.ACCESS_TOKEN_EXPIRY }
-  );
-  const refreshToken = jwt.sign(
-    { _id: userId },
-    process.env.REFRESH_TOKEN_SECRET,
-    { expiresIn: process.env.REFRESH_TOKEN_EXPIRY }
-  );
-  return { accessToken, refreshToken };
+const normalizeEmail = (email) => String(email || '').trim().toLowerCase();
+
+const buildSessionPayload = async (res, user, message = 'Session created') => {
+  const { accessToken, refreshToken } = generateTokens(user._id);
+  user.refreshTokenHash = hashRefreshToken(refreshToken);
+  await user.save();
+  setRefreshTokenCookie(res, refreshToken);
+
+  return new ApiResponse(200, {
+    user: user.toSafeObject(),
+    accessToken,
+  }, message);
+};
+
+const resolveRefreshTokenUser = async (token) => {
+  const decoded = jwt.verify(token, process.env.REFRESH_TOKEN_SECRET);
+  const user = await User.findById(decoded._id);
+
+  if (!user || user.refreshTokenHash !== hashRefreshToken(token)) {
+    throw new ApiError(401, 'Invalid refresh token');
+  }
+
+  return user;
 };
 
 // POST /api/auth/register
 export const register = asyncHandler(async (req, res) => {
-  const { name, email, password } = req.body;
+  const { name, password } = req.body;
+  const email = normalizeEmail(req.body.email);
   if (!name || !email || !password) throw new ApiError(400, 'All fields are required');
   if (password.length < 8) throw new ApiError(400, 'Password must be at least 8 characters');
 
@@ -46,7 +65,8 @@ export const register = asyncHandler(async (req, res) => {
   try {
     await sendOTPEmail(email, otp);
   } catch (emailErr) {
-    console.error('OTP email failed (non-fatal):', emailErr.message);
+    console.error('OTP email failed:', emailErr.message);
+    throw new ApiError(502, 'Unable to send OTP email right now. Please try again.');
   }
 
   res.status(201).json(new ApiResponse(201, { email }, 'OTP sent to your email'));
@@ -54,7 +74,8 @@ export const register = asyncHandler(async (req, res) => {
 
 // POST /api/auth/verify-otp
 export const verifyOTP = asyncHandler(async (req, res) => {
-  const { email, otp } = req.body;
+  const { otp } = req.body;
+  const email = normalizeEmail(req.body.email);
   if (!email || !otp) throw new ApiError(400, 'Email and OTP are required');
 
   const user = await User.findOne({ email });
@@ -74,20 +95,14 @@ export const verifyOTP = asyncHandler(async (req, res) => {
   user.otpExpiry = null;
   user.otpAttempts = 0;
 
-  const { accessToken, refreshToken } = generateTokens(user._id);
-  user.refreshToken = refreshToken;
-  await user.save();
-
-  res.status(200).json(new ApiResponse(200, {
-    user: user.toSafeObject(),
-    accessToken,
-    refreshToken,
-  }, 'Email verified. Logged in.'));
+  const response = await buildSessionPayload(res, user, 'Email verified. Logged in.');
+  res.status(200).json(response);
 });
 
 // POST /api/auth/login
 export const login = asyncHandler(async (req, res) => {
-  const { email, password } = req.body;
+  const { password } = req.body;
+  const email = normalizeEmail(req.body.email);
   if (!email || !password) throw new ApiError(400, 'Email and password are required');
 
   const user = await User.findOne({ email });
@@ -97,46 +112,47 @@ export const login = asyncHandler(async (req, res) => {
   const isMatch = await user.comparePassword(password);
   if (!isMatch) throw new ApiError(401, 'Invalid credentials');
 
-  const { accessToken, refreshToken } = generateTokens(user._id);
-  user.refreshToken = refreshToken;
-  await user.save();
-
-  res.status(200).json(new ApiResponse(200, {
-    user: user.toSafeObject(),
-    accessToken,
-    refreshToken,
-  }, 'Login successful'));
+  const response = await buildSessionPayload(res, user, 'Login successful');
+  res.status(200).json(response);
 });
 
 // POST /api/auth/refresh-token
 export const refreshToken = asyncHandler(async (req, res) => {
-  const { refreshToken: token } = req.body;
-  if (!token) throw new ApiError(400, 'Refresh token required');
+  const token = getRefreshTokenFromRequest(req);
+  if (!token) throw new ApiError(401, 'Refresh token required');
 
-  const decoded = jwt.verify(token, process.env.REFRESH_TOKEN_SECRET);
-  const user = await User.findById(decoded._id);
-
-  if (!user || user.refreshToken !== token) throw new ApiError(401, 'Invalid refresh token');
-
-  const { accessToken, refreshToken: newRefreshToken } = generateTokens(user._id);
-  user.refreshToken = newRefreshToken;
-  await user.save();
-
-  res.status(200).json(new ApiResponse(200, { accessToken, refreshToken: newRefreshToken }));
+  try {
+    const user = await resolveRefreshTokenUser(token);
+    const response = await buildSessionPayload(res, user, 'Session refreshed');
+    res.status(200).json(response);
+  } catch (error) {
+    clearRefreshTokenCookie(res);
+    if (error instanceof ApiError) throw error;
+    throw new ApiError(401, 'Invalid refresh token');
+  }
 });
 
 // POST /api/auth/logout
 export const logout = asyncHandler(async (req, res) => {
-  const { refreshToken: token } = req.body;
+  const token = getRefreshTokenFromRequest(req);
+
   if (token) {
-    await User.findOneAndUpdate({ refreshToken: token }, { refreshToken: null });
+    try {
+      const user = await resolveRefreshTokenUser(token);
+      user.refreshTokenHash = null;
+      await user.save();
+    } catch (_) {
+      // Ignore invalid/expired refresh tokens on logout; clearing the cookie is enough.
+    }
   }
+
+  clearRefreshTokenCookie(res);
   res.status(200).json(new ApiResponse(200, null, 'Logged out'));
 });
 
 // POST /api/auth/resend-otp
 export const resendOTP = asyncHandler(async (req, res) => {
-  const { email } = req.body;
+  const email = normalizeEmail(req.body.email);
   if (!email) throw new ApiError(400, 'Email required');
 
   const user = await User.findOne({ email });
@@ -152,7 +168,8 @@ export const resendOTP = asyncHandler(async (req, res) => {
   try {
     await sendOTPEmail(email, otp);
   } catch (emailErr) {
-    console.error('OTP email failed (non-fatal):', emailErr.message);
+    console.error('OTP email failed:', emailErr.message);
+    throw new ApiError(502, 'Unable to send OTP email right now. Please try again.');
   }
 
   res.status(200).json(new ApiResponse(200, null, 'New OTP sent'));

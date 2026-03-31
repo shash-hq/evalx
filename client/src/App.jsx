@@ -1,7 +1,7 @@
 import {Routes, Route, Navigate} from 'react-router-dom';
 import {useEffect} from 'react';
 import {useDispatch} from 'react-redux';
-import {fetchMe} from './store/slices/authSlice.js';
+import {restoreSession} from './store/slices/authSlice.js';
 
 import Navbar from './components/layout/Navbar.jsx';
 import ProtectedRoute from './components/layout/ProtectedRoute.jsx';
@@ -17,14 +17,14 @@ import ContestArena from './pages/contests/ContestArena.jsx';
 import UserDashboard from './pages/dashboard/UserDashboard.jsx';
 import OrganizerDashboard from './pages/dashboard/OrganizerDashboard.jsx';
 import AdminPanel from './pages/admin/AdminPanel.jsx';
+import SuperAdminPanel from './pages/admin/SuperAdminPanel.jsx';
 
 export default function App() {
   const dispatch = useDispatch();
 
   useEffect(() => {
-    const token = localStorage.getItem('accessToken');
-    if (token) dispatch(fetchMe());
-  }, []);
+    dispatch(restoreSession());
+  }, [dispatch]);
 
   return (
     <div className="min-h-screen bg-base">
@@ -42,12 +42,16 @@ export default function App() {
           <Route path="/dashboard" element={<UserDashboard />} />
         </Route>
 
-        <Route element={<RoleRoute roles={['organizer', 'admin']} />}>
+        <Route element={<RoleRoute roles={['organizer']} />}>
           <Route path="/organizer" element={<OrganizerDashboard />} />
         </Route>
 
         <Route element={<RoleRoute roles={['admin']} />}>
-          <Route path="/admin" element={<AdminPanel />} />
+          <Route path="/admin" element={<AdminPanel mode="admin" />} />
+        </Route>
+
+        <Route element={<RoleRoute roles={['superadmin']} />}>
+          <Route path="/superadmin" element={<SuperAdminPanel />} />
         </Route>
 
         <Route path="*" element={<Navigate to="/" replace />} />

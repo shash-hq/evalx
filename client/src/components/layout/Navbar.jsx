@@ -5,14 +5,14 @@ import {logout} from '../../store/slices/authSlice.js';
 import {logoutAPI} from '../../services/authService.js';
 
 export default function Navbar() {
-  const {user, isAuthenticated, isAdmin, isOrganizer} = useAuth();
+  const {user, isAuthenticated, isAdmin, isOrganizer, isSuperAdmin} = useAuth();
   const dispatch = useDispatch();
   const navigate = useNavigate();
   const location = useLocation();
 
   const handleLogout = async () => {
     try {
-      await logoutAPI({refreshToken: localStorage.getItem('refreshToken')});
+      await logoutAPI();
     } catch (_) {}
     dispatch(logout());
     navigate('/login');
@@ -36,6 +36,7 @@ export default function Navbar() {
                 ? [{path: '/organizer', label: 'ORGANIZER'}]
                 : []),
               ...(isAdmin ? [{path: '/admin', label: 'ADMIN'}] : []),
+              ...(isSuperAdmin ? [{path: '/superadmin', label: 'SUPERADMIN'}] : []),
             ].map(({path, label}) => (
               <Link
                 key={path}

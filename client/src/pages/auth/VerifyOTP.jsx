@@ -17,7 +17,7 @@ export default function VerifyOTP() {
 
   useEffect(() => {
     if (!email) navigate('/register');
-  }, [email]);
+  }, [email, navigate]);
 
   useEffect(() => {
     if (resendCooldown > 0) {
